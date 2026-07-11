@@ -2,6 +2,8 @@ plugins {
 	java
 	id("org.springframework.boot") version "4.1.0"
 	id("io.spring.dependency-management") version "1.1.7"
+	// generates Java source classes from WSDL files using Apache CXF
+	id("com.github.bjornvester.wsdl2java") version "2.0.2"
 }
 
 group = "com.ht-rnd"
@@ -13,17 +15,31 @@ java {
 	}
 }
 
+wsdl2java {
+	wsdlDir.set(layout.projectDirectory.dir("../wsdl"))
+}
+
 repositories {
 	mavenCentral()
 }
 
 dependencies {
+	// REST API
+	implementation("org.springframework.boot:spring-boot-starter-web")
+
+	// SOAP klijent
+	implementation("org.springframework.ws:spring-ws-core")
+	implementation("wsdl4j:wsdl4j")
+
+	// XML/JAXB
+	implementation("org.glassfish.jaxb:jaxb-runtime")
+
+	// Validacija
 	implementation("org.springframework.boot:spring-boot-starter-validation")
-	implementation("org.springframework.boot:spring-boot-starter-webmvc")
-	implementation("org.springframework.boot:spring-boot-starter-webservices")
-	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
-	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
-	testImplementation("org.springframework.boot:spring-boot-starter-webservices-test")
+
+	// Testovi
+	testImplementation("org.springframework.boot:spring-boot-starter-test")
+	testImplementation("org.springframework.ws:spring-ws-test")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
