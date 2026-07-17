@@ -27,17 +27,20 @@ dependencies {
 	// REST API
 	implementation("org.springframework.boot:spring-boot-starter-web")
 
-	// SOAP klijent
+	// SOAP client
 	implementation("org.springframework.ws:spring-ws-core")
 	implementation("wsdl4j:wsdl4j")
 
 	// XML/JAXB
 	implementation("org.glassfish.jaxb:jaxb-runtime")
 
-	// Validacija
+	// Validation
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 
-	// Testovi
+	// Testing
+	implementation("com.fasterxml.jackson.core:jackson-databind")
+	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.ws:spring-ws-test")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
