@@ -3,8 +3,13 @@ package com.ht_rnd.wifi_admin_service.controller;
 import com.ht_rnd.wifi_admin_service.model.WifiConfiguration;
 import com.ht_rnd.wifi_admin_service.service.WifiService;
 import jakarta.validation.Valid;
+import local.wifi_admin.platform.v1.EncryptionType;
+import local.wifi_admin.platform.v1.WifiBandType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
+
+import java.util.Arrays;
+import java.util.List;
 
 @RestController
 @CrossOrigin(origins = "http://localhost:3000")
@@ -50,5 +55,33 @@ public class WifiController {
     @PutMapping
     public ResponseEntity<WifiConfiguration> put(@Valid @RequestBody WifiConfiguration config) {
         return ResponseEntity.ok(wifiService.updateWifiParams(config));
+    }
+
+    /**
+     * Returns all supported encryption types.
+     *
+     * @return HTTP 200 response containing all available encryption type values
+     */
+    @GetMapping("/encryption_type")
+    public ResponseEntity<List<String>> getEncryptionTypes() {
+        List<String> encryptionTypes = Arrays.stream(EncryptionType.values())
+                .map(Enum::name)
+                .toList();
+
+        return ResponseEntity.ok(encryptionTypes);
+    }
+
+    /**
+     * Returns all supported Wi-Fi band types.
+     *
+     * @return HTTP 200 response containing all available Wi-Fi band type values
+     */
+    @GetMapping("/wifi_band_type")
+    public ResponseEntity<List<String>> getWifiBandTypes() {
+        List<String> wifiBandTypes = Arrays.stream(WifiBandType.values())
+                .map(Enum::name)
+                .toList();
+
+        return ResponseEntity.ok(wifiBandTypes);
     }
 }
