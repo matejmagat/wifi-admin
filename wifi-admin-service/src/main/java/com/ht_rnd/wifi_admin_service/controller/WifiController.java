@@ -62,7 +62,7 @@ public class WifiController {
      *
      * @return HTTP 200 response containing all available encryption type values
      */
-    @GetMapping("/encryption_type")
+    @GetMapping("/encryption-types")
     public ResponseEntity<List<String>> getEncryptionTypes() {
         List<String> encryptionTypes = Arrays.stream(EncryptionType.values())
                 .map(Enum::name)
@@ -76,7 +76,7 @@ public class WifiController {
      *
      * @return HTTP 200 response containing all available Wi-Fi band type values
      */
-    @GetMapping("/wifi_band_type")
+    @GetMapping("/wifi-band-types")
     public ResponseEntity<List<String>> getWifiBandTypes() {
         List<String> wifiBandTypes = Arrays.stream(WifiBandType.values())
                 .map(Enum::name)
