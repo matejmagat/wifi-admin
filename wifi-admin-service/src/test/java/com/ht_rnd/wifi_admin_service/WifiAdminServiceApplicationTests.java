@@ -311,3 +311,4 @@ class WifiEndpointIntegrationTest {
 						.value("SOAP communication error: read timed out"));
 	}
 }
+
