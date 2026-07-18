@@ -27,6 +27,10 @@ dependencies {
 	// REST API
 	implementation("org.springframework.boot:spring-boot-starter-web")
 
+	// Persistence
+	implementation("org.springframework.boot:spring-boot-starter-data-jpa")
+	runtimeOnly("org.postgresql:postgresql")
+
 	// SOAP client
 	implementation("org.springframework.ws:spring-ws-core")
 	implementation("wsdl4j:wsdl4j")
@@ -37,12 +41,14 @@ dependencies {
 	// Validation
 	implementation("org.springframework.boot:spring-boot-starter-validation")
 
-	// Testing
+	// JSON
 	implementation("com.fasterxml.jackson.core:jackson-databind")
-	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 
+	// Testing
 	testImplementation("org.springframework.boot:spring-boot-starter-test")
 	testImplementation("org.springframework.ws:spring-ws-test")
+	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
+	testImplementation("com.h2database:h2")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 }
 
