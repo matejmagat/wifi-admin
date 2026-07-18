@@ -1,10 +1,12 @@
 package com.ht_rnd.wifi_admin_service.service;
 
 import com.ht_rnd.wifi_admin_service.client.SoapClient;
+import com.ht_rnd.wifi_admin_service.entity.WifiConfigurationEntity;
+import com.ht_rnd.wifi_admin_service.mapper.WifiConfigurationMapper;
 import com.ht_rnd.wifi_admin_service.model.WifiConfiguration;
-import local.wifi_admin.platform.v1.EncryptionType;
-import local.wifi_admin.platform.v1.WifiBandType;
+import com.ht_rnd.wifi_admin_service.repository.WifiConfigurationRepository;
 import jakarta.validation.ValidationException;
+import local.wifi_admin.platform.v1.EncryptionType;
 import local.wifi_admin.platform.v1.GetCpeIdResponse;
 import local.wifi_admin.platform.v1.UpdateCpeIdResponse;
 import local.wifi_admin.platform.v1.WifiConfigurationType;
@@ -15,69 +17,67 @@ import org.springframework.ws.soap.client.SoapFaultClientException;
 public class WifiService {
 
     private final SoapClient soapClient;
+    private final WifiConfigurationRepository wifiConfigurationRepository;
+    private final WifiConfigurationMapper wifiConfigurationMapper;
 
     /**
-     * Creates the service with the SOAP client dependency.
+     * Creates the service with SOAP, repository, and mapping dependencies.
      *
-     * @param soapClient client used to communicate with the SOAP backend
+     * @param soapClient SOAP client used to communicate with the upstream platform
+     * @param wifiConfigurationRepository repository used for database access
+     * @param wifiConfigurationMapper mapper used to convert between entity, SOAP, and REST models
      */
-    public WifiService(SoapClient soapClient) {
+    public WifiService(
+            SoapClient soapClient,
+            WifiConfigurationRepository wifiConfigurationRepository,
+            WifiConfigurationMapper wifiConfigurationMapper
+    ) {
         this.soapClient = soapClient;
+        this.wifiConfigurationRepository = wifiConfigurationRepository;
+        this.wifiConfigurationMapper = wifiConfigurationMapper;
     }
 
     /**
      * Retrieves Wi-Fi parameters for the given CPE identifier.
      *
-     * <p>This method calls the SOAP backend, extracts the SOAP configuration object,
-     * and converts it into the REST model used by the controller. SOAP faults that
-     * indicate a missing device are translated into {@code CpeNotFoundException},
-     * while other failures are wrapped in {@code SoapCommunicationException}.</p>
+     * <p>The database is checked first. If a record exists, it is returned immediately.
+     * If no record is found, the SOAP backend is queried, the result is stored in the
+     * database, and the stored value is returned.</p>
      *
      * @param cpeId unique identifier of the target device
-     * @return mapped Wi-Fi configuration for the requested device
+     * @return Wi-Fi configuration for the requested device
      */
     public WifiConfiguration getWifiParams(String cpeId) {
-        try {
-            GetCpeIdResponse response = soapClient.getCpeId(cpeId);
-            return mapToRest(response.getConfiguration());
-        } catch (SoapFaultClientException e) {
-            String msg = e.getFaultStringOrReason();
-            if (msg != null && msg.toLowerCase().contains("not found")) {
-                throw new CpeNotFoundException(cpeId);
-            }
-            throw new SoapCommunicationException("SOAP fault: " + msg, e);
-        } catch (Exception e) {
-            throw new SoapCommunicationException("SOAP communication error: " + e.getMessage(), e);
-        }
+        return wifiConfigurationRepository.findByCpeId(cpeId)
+                .map(wifiConfigurationMapper::toDto)
+                .orElseGet(() -> fetchFromSoapAndSave(cpeId));
     }
 
     /**
      * Updates Wi-Fi parameters after applying service-level validation rules.
      *
-     * <p>If the encryption type requires a password, the password must be present.
-     * If the encryption type is {@code OPEN}, any provided password is cleared before
-     * the request is sent. The SOAP response is then mapped back to the REST model.</p>
+     * <p>The update is first sent to the SOAP backend. If the SOAP update succeeds,
+     * the returned configuration is written to the local database and then returned
+     * to the REST layer.</p>
      *
      * @param config requested Wi-Fi configuration update
-     * @return updated Wi-Fi configuration returned by the SOAP backend
+     * @return updated Wi-Fi configuration returned by the SOAP backend and persisted locally
      * @throws ValidationException if the request violates business validation rules
      */
     public WifiConfiguration updateWifiParams(WifiConfiguration config) {
-        // Validation encryption that requires a password
-        if (config.getEncryptionType() != null
-                && config.getEncryptionType() != EncryptionType.OPEN
-                && (config.getPassword() == null || config.getPassword().isBlank())) {
-            throw new ValidationException("Password is required for encryption type: " + config.getEncryptionType());
-        }
-
-        // OPEN can't have a password
-        if (config.getEncryptionType() == EncryptionType.OPEN && config.getPassword() != null && !config.getPassword().isBlank()) {
-            config.setPassword(null);
-        }
+        validateWifiConfiguration(config);
 
         try {
             UpdateCpeIdResponse response = soapClient.updateCpeId(config);
-            return mapToRest(response.getConfiguration());
+            WifiConfigurationType soapConfig = response.getConfiguration();
+
+            WifiConfigurationEntity entity = wifiConfigurationRepository.findByCpeId(soapConfig.getCpeId())
+                    .orElseGet(() -> wifiConfigurationMapper.toNewEntity(soapConfig));
+
+            wifiConfigurationMapper.updateEntityFromSoap(soapConfig, entity);
+            WifiConfigurationEntity savedEntity = wifiConfigurationRepository.save(entity);
+
+            return wifiConfigurationMapper.toDto(savedEntity);
         } catch (SoapFaultClientException e) {
             String msg = e.getFaultStringOrReason();
             if (msg != null && msg.toLowerCase().contains("not found")) {
@@ -92,32 +92,60 @@ public class WifiService {
     }
 
     /**
-     * Converts a SOAP-generated Wi-Fi configuration object into the REST model.
+     * Fetches Wi-Fi configuration from the SOAP backend, saves it to the database,
+     * and returns the persisted result as a REST DTO.
      *
-     * @param soap SOAP model returned by the backend service
-     * @return REST model exposed by the API
+     * @param cpeId unique identifier of the target device
+     * @return persisted Wi-Fi configuration
      */
-    private WifiConfiguration mapToRest(WifiConfigurationType soap) {
-        WifiConfiguration config = new WifiConfiguration();
-        config.setCpeId(soap.getCpeId());
-        config.setWifiBandType(WifiBandType.valueOf(soap.getWifiBand().value()));
-        config.setSsid(soap.getSsid());
-        if (soap.getEncryptionType() != null) {
-            config.setEncryptionType(EncryptionType.valueOf(soap.getEncryptionType().toString()));
+    private WifiConfiguration fetchFromSoapAndSave(String cpeId) {
+        try {
+            GetCpeIdResponse response = soapClient.getCpeId(cpeId);
+            WifiConfigurationType soapConfig = response.getConfiguration();
+
+            WifiConfigurationEntity entity = wifiConfigurationRepository.findByCpeId(cpeId)
+                    .orElseGet(() -> wifiConfigurationMapper.toNewEntity(soapConfig));
+
+            wifiConfigurationMapper.updateEntityFromSoap(soapConfig, entity);
+            WifiConfigurationEntity savedEntity = wifiConfigurationRepository.save(entity);
+
+            return wifiConfigurationMapper.toDto(savedEntity);
+        } catch (SoapFaultClientException e) {
+            String msg = e.getFaultStringOrReason();
+            if (msg != null && msg.toLowerCase().contains("not found")) {
+                throw new CpeNotFoundException(cpeId);
+            }
+            throw new SoapCommunicationException("SOAP fault: " + msg, e);
+        } catch (Exception e) {
+            throw new SoapCommunicationException("SOAP communication error: " + e.getMessage(), e);
         }
-        config.setPassword(soap.getPassword());
-        return config;
     }
 
     /**
-     * Exception thrown when a requested CPE cannot be found in the SOAP backend.
+     * Applies business validation rules before updating Wi-Fi parameters.
+     *
+     * <p>Encrypted networks require a password. Open networks must not keep a password.</p>
+     *
+     * @param config requested Wi-Fi configuration update
+     */
+    private void validateWifiConfiguration(WifiConfiguration config) {
+        if (config.getEncryptionType() != null
+                && config.getEncryptionType() != EncryptionType.OPEN
+                && (config.getPassword() == null || config.getPassword().isBlank())) {
+            throw new ValidationException("Password is required for encryption type: " + config.getEncryptionType());
+        }
+
+        if (config.getEncryptionType() == EncryptionType.OPEN
+                && config.getPassword() != null
+                && !config.getPassword().isBlank()) {
+            config.setPassword(null);
+        }
+    }
+
+    /**
+     * Exception thrown when a requested CPE cannot be found in the database or SOAP backend.
      */
     public static class CpeNotFoundException extends RuntimeException {
-        /**
-         * Creates an exception for a missing CPE identifier.
-         *
-         * @param cpeId identifier of the missing device
-         */
         public CpeNotFoundException(String cpeId) {
             super("CPE not found: " + cpeId);
         }
@@ -127,12 +155,6 @@ public class WifiService {
      * Exception thrown when communication with the SOAP backend fails.
      */
     public static class SoapCommunicationException extends RuntimeException {
-        /**
-         * Creates an exception describing a SOAP communication failure.
-         *
-         * @param message human-readable error description
-         * @param cause original exception thrown during SOAP processing
-         */
         public SoapCommunicationException(String message, Throwable cause) {
             super(message, cause);
         }
