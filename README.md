@@ -1,140 +1,176 @@
-# WiFi parametri — zadatak
+# WiFi Admin — rješenje zadatka
 
-U aplikaciji MojTelekom pretplatnik može dohvatiti parametre WiFi mreže postavljene na HT routeru koji je instaliran na korisnikovoj adresi.
-Trenutno se ti parametri dohvaćaju i postavljaju putem SOAP servisa.
+Rješenje zadatka za prijavu na posao: REST API (Spring Boot) koji služi kao wrapper oko postojećeg SOAP servisa za dohvat i izmjenu WiFi parametara na HT routeru (CPE uređaju), uz React frontend i podršku bazu podataka. Izvorni opis zadatka nalazi se u [TASK.md](TASK.md) (bivši `README.md`).
 
-Zadatak je implementirati REST API prema priloženoj Swagger specifikaciji koja će biti wrapper oko SOAP backenda jer je u novoj verziji aplikacije dopuštena samo REST komunikacija.
+## Sadržaj
 
-Ovaj repozitorij sadrži WSDL i Swagger specifikacije servisa te mock vanjske platforme u docker-compose datoteci.
+- [Riješeni zadaci](#riješeni-zadaci)
+- [Arhitektura i struktura projekta](#arhitektura-i-struktura-projekta)
+- [Preduvjeti](#preduvjeti)
+- [Pokretanje SOAP mock platforme](#pokretanje-soap-mock-platforme)
+- [Pokretanje Spring Boot backenda](#pokretanje-spring-boot-backenda)
+- [Pokretanje Spring testova](#pokretanje-spring-testova)
+- [Pokretanje React frontenda](#pokretanje-react-frontenda)
+- [Autentikacija](#autentikacija)
+- [Moguća poboljšanja](#moguća-poboljšanja)
+- [Korišteni alati](#korišteni-alati)
 
-Samu backend aplikaciju potrebno je napraviti kao PR na ovaj GitHub repozitorij.
+## Riješeni zadaci
 
-## Cilj zadatka
+**Osnovni zadatak:**
 
-Kandidat implementira **REST API** koji:
+- REST API prema [openapi/openapi.yaml](openapi/openapi.yaml) izložen kroz `WifiController`: `GET /wifi-parameter/{cpeId}` i `PUT /wifi-parameter`.
+- SOAP klijent (`SoapClient`, Spring-WS + JAXB, klase generirane iz WSDL-a preko `wsdl2java` Gradle plugina) koji poziva operacije `getCpeID` i `updateCpeId` prema [wsdl/wifi-platform.wsdl](wsdl/wifi-platform.wsdl).
+- Dvosmjerno mapiranje REST ⇄ SOAP ⇄ entitet baze kroz `WifiConfigurationMapper`.
+- Validacija poslovnog pravila: šifrirane mreže moraju imati lozinku, OPEN mreže je ne smiju imati (`WifiService.validateWifiConfiguration`).
+- Rukovanje greškama: SOAP fault i komunikacijske greške mapirane su u smislene HTTP statuse (404, 400, 502) preko `GlobalExceptionHandler`.
+- Normalizacija SOAP envelopea i detekcija faulta u odgovoru kroz `SoapClientInterceptor`.
 
-- izlaže dvije metode opisane u [openapi/openapi.yaml](openapi/openapi.yaml);
-- u pozadini, kao **SOAP klijent**, poziva vanjsku platformu opisanu u [wsdl/wifi-platform.wsdl](wsdl/wifi-platform.wsdl);
-- mapira isti poslovni model iz REST JSON-a u SOAP poruke i obratno.
+**Dodatni zadaci (svi implementirani):**
 
-Operacija `updateCpeId` u SOAP-u i WSDL-u **mijenja WiFi konfiguraciju** CPE-a (SSID, pojas, šifriranje, lozinka itd.), iako naziv sadrži „CpeId“ — to je naziv operacije na platformi, ne samo promjena identifikatora.
+- **Baza podataka** — `WifiConfigurationEntity` + `WifiConfigurationRepository` (Spring Data JPA, PostgreSQL za dev/prod, H2 za testove). `GET` prvo čita iz baze, a tek ako zapis ne postoji ide na SOAP i sprema rezultat; `PUT` uvijek ide na SOAP i zatim ažurira bazu.
+- **Scheduler za noćnu sinkronizaciju** — `WifiSyncService.syncAllKnownWifiConfigurations()`, konfigurabilan preko `wifi.sync.*` property-ja (uključeno/isključeno, initial delay, fixed delay), prolazi kroz sve poznate CPE-ove iz baze i osvježava ih sa SOAP platforme.
+- **Logiranje** — konfigurirano u `application.properties` (log u konzolu i datoteku, po profilu različita razina; SOAP message tracing).
+- **Sigurnost** — HTTP Basic Auth preko `SecurityConfig` (Spring Security), `/wifi-parameter/**` zahtijeva prijavu, `/actuator/health` i `/actuator/info` su javni, ostali actuator endpointi traže rolu `ADMIN`.
+- **Konfiguracijski profili** — `dev`, `test`, `prod` (`application-*.properties`), različiti izvori baze, razine logiranja i sigurnosnih parametara po profilu.
+- **React frontend** — forma za dohvat i izmjenu WiFi parametara po `cpeId`, poziva REST API (`wifi-admin-frontend`).
 
-## Arhitektura (tko što radi)
+## Arhitektura i struktura projekta
 
 ```text
-Klijent (Postman / drugi servis)
-        │  REST (JSON)
+Frontend (React, :3000)
+        │  REST + Basic Auth
         ▼
-  [Backend kandidata]
-        │  SOAP 1.1 (XML) + SOAPAction
+Backend (Spring Boot, :8081)
+        │  SOAP 1.1 + SOAPAction
         ▼
-  [Mock platforme — Mockoon u Dockeru]
+Mock platforme (Mockoon u Dockeru, :8080)
+        │
+        ▼
+PostgreSQL (:5432) ← baza s posljednjim poznatim stanjem CPE-ova
 ```
 
-- **REST** je nova definicija: `GET /wifi-parameter/{cpeId}` i `PUT /wifi-parameter`.
-- **SOAP** je postojeća definicija prema platformi: operacije `getCpeID` i `updateCpeId` (vidi WSDL i `SOAPAction` zaglavlje).
+```text
+wifi-admin-main/
+├── openapi/openapi.yaml           REST kontrakt
+├── wsdl/wifi-platform.wsdl        SOAP kontrakt platforme
+├── mockoon/platform-mock.json     Mock SOAP platforme
+├── docker-compose.yml             Pokretanje mocka
+├── wifi-admin-service/            Spring Boot backend
+│   └── src/main/java/.../
+│       ├── controller/            WifiController (REST)
+│       ├── service/                WifiService, WifiSyncService
+│       ├── client/                 SoapClient, SoapClientInterceptor
+│       ├── mapper/                 WifiConfigurationMapper
+│       ├── model/                  WifiConfiguration (REST DTO)
+│       ├── entity/                 WifiConfigurationEntity (JPA)
+│       ├── repository/             WifiConfigurationRepository
+│       ├── config/                 SoapConfig, SecurityConfig, SchedulerConfig
+│       └── exception/               GlobalExceptionHandler
+└── wifi-admin-frontend/            React frontend
+    └── src/
+        ├── api/                     client.js, wifiApi.js
+        ├── components/               WifiForm, WifiLookup, ErrorMessage
+        ├── hooks/                     useWifiConfiguration, useWifiMetadata
+        └── config/env.js             API URL i auth (dev postavke)
+```
 
-## Pokretanje mocka (Docker Compose)
+## Preduvjeti
+
+- Java 21 (JDK)
+- Node.js 18+ i npm (za frontend)
+- Docker i Docker Compose (za SOAP mock)
+- PostgreSQL (lokalno instaliran ili u kontejneru) — potreban za `dev` profil backend
+
+## Pokretanje SOAP mock platforme
 
 ```bash
 docker compose up -d
 ```
 
-- Mock je dostupan na **http://localhost:8080/platform** (HTTP POST, SOAP 1.1).
-
-Zaustavljanje:
+Mock je dostupan na `http://localhost:8080/platform`. Zaustavljanje:
 
 ```bash
 docker compose down
 ```
 
-### SOAP UI / Apache CXF i XML prefiksi
+Detalji o mocku (seed podaci, SOAP primjeri, kompatibilnost sa SOAP UI) opisani su u izvornom [TASK.md](TASK.md).
 
-Mockoon čita polja iz **parsiranog XML-a** (isti model kao `xml-js`). Alati poput **SOAP UI** često generiraju **`soapenv:`** omot i **`v1:`** (ili drugi) prefiks za elemente u namespaceu platforme, dok curl primjeri u ovom README-u koriste **`soap:`** + **`tns:`**.
+## Pokretanje Spring Boot backenda
 
-Mock podržava **oba** stila (automatski se grana po sadržaju zahtjeva). Ako i dalje ne dobijete očekivani odgovor nakon što ste promijenili `mockoon/platform-mock.json` ili ga ponovno generirali, učitajte datoteku u Mockoonu:
+1. Pripremiti PostgreSQL bazu za `dev` profil (podaci iz `application-dev.properties`):
+
+   ```sql
+   CREATE DATABASE wifi_admin_db;
+   CREATE USER wifi_admin_user WITH PASSWORD 'wifi_admin_user';
+   GRANT ALL PRIVILEGES ON DATABASE wifi_admin_db TO wifi_admin_user;
+   ```
+
+2. Pokrenuti SOAP mock (vidi gore) — backend na startu i pri svakom dohvatu/izmjeni komunicira s njim na `http://localhost:8080/platform`.
+
+3. Pokrenuti backend iz `wifi-admin-service/`:
+
+   ```bash
+   ./gradlew bootRun
+   ```
+
+   Aktivan je `dev` profil po defaultu (`spring.profiles.active=dev` u `application.properties`). Backend sluša na `http://localhost:8081`.
+
+   Za pokretanje s drugim profilom (npr. `prod`, uz odgovarajuće env varijable `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `APP_SECURITY_USERNAME`, `APP_SECURITY_PASSWORD`):
+
+   ```bash
+   ./gradlew bootRun --args='--spring.profiles.active=prod'
+   ```
+
+U IntelliJ IDEA-i dovoljno je otvoriti `wifi-admin-service` kao Gradle projekt i pokrenuti `WifiAdminServiceApplication` (uz Active profile `dev` u Run Configuration ako se ne koristi Gradle task).
+
+## Pokretanje Spring testova
+
+Testovi (`WifiServiceTest`, `WifiControllerTest`, `WifiSyncServiceTest`, `WifiPersistenceIntegrationTest`, `WifiAdminServiceApplicationTests`) koriste `test` profil s H2 in-memory bazom, pa ne zahtijevaju pokrenutu vanjsku bazu ni SOAP mock.
 
 ```bash
-docker compose restart platform-mock
+cd wifi-admin-service
+./gradlew test
 ```
 
-**SOAPAction** s navodnicima ili bez njih — regex u mocku i dalje prepoznaje `getCpeID` / `updateCpeId`.
+Izvještaj o testovima nakon izvođenja: `wifi-admin-service/build/reports/tests/test/index.html`.
 
-## Primjer SOAP poziva (curl)
+U IntelliJ IDEA-i: desni klik na `src/test/java` → *Run All Tests*, ili pokretanje pojedinačne test klase.
 
-Zamijenite `CPE_001` jednim od seed `cpeId` iz mocka (vidi sljedeći odlomak).
-
-**getCpeID** (SOAPAction mora odgovarati WSDL-u):
+## Pokretanje React frontenda
 
 ```bash
-curl -s -X POST "http://localhost:8080/platform" \
-  -H "Content-Type: text/xml; charset=utf-8" \
-  -H "SOAPAction: http://wifi-admin.local/platform/v1#getCpeID" \
-  -d '<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://wifi-admin.local/platform/v1">
-  <soap:Body>
-    <tns:GetCpeIdRequest>
-      <tns:cpeId>CPE_001</tns:cpeId>
-    </tns:GetCpeIdRequest>
-  </soap:Body>
-</soap:Envelope>'
+cd wifi-admin-frontend
+npm install
+npm start
 ```
 
-**updateCpeId** (mock očekuje sve polja u `<tns:configuration>` radi predloška; za OPEN mreže pošaljite prazne ili dummy vrijednosti za opcionalna polja ako generator SOAP klijenta ne izostavlja elemente):
+Frontend se pokreće na `http://localhost:3000` i poziva backend na `http://localhost:8081` (vidi `src/config/env.js`). Backend mora biti pokrenut prije korištenja frontenda; CORS je na backendu dopušten upravo za `http://localhost:3000` (`@CrossOrigin` u `WifiController`).
 
-```bash
-curl -s -X POST "http://localhost:8080/platform" \
-  -H "Content-Type: text/xml; charset=utf-8" \
-  -H "SOAPAction: http://wifi-admin.local/platform/v1#updateCpeId" \
-  -d '<?xml version="1.0" encoding="UTF-8"?>
-<soap:Envelope xmlns:soap="http://schemas.xmlsoap.org/soap/envelope/" xmlns:tns="http://wifi-admin.local/platform/v1">
-  <soap:Body>
-    <tns:UpdateCpeIdRequest>
-      <tns:configuration>
-        <tns:cpeId>CPE_001</tns:cpeId>
-        <tns:wifiBand>BAND_2_4_GHZ</tns:wifiBand>
-        <tns:ssid>Office-2G</tns:ssid>
-        <tns:encryptionType>WPA2_PSK</tns:encryptionType>
-        <tns:password>moja-lozinka</tns:password>
-      </tns:configuration>
-    </tns:UpdateCpeIdRequest>
-  </soap:Body>
-</soap:Envelope>'
-```
+## Autentikacija
 
-## Podaci u mocku (seed + in‑memory)
+Backend zahtijeva HTTP Basic Auth za sve `/wifi-parameter/**` pozive. Zadane dev vjerodajnice (`application-dev.properties`):
 
-- U [mockoon/platform-mock.json](mockoon/platform-mock.json) postoji **data bucket** s najmanje **12** predefiniranih CPE zapisa (`CPE_001` … `CPE_012`) s različitim kombinacijama pojasa (2.4 / 5 GHz), šifriranja i lozinke.
-- **`updateCpeId`** ažurira zapis u memoriji Mockoona (`setData` + `merge`). Nova lozinka vidljiva je na sljedećem **`getCpeID`** dok mock radi.
-- **Restart kontejnera** (`docker compose restart`) ili novo pokretanje vraća **početne seed vrijednosti** iz JSON datoteke.
-- Mock **ne zapisuje** runtime promjene natrag u datoteku na disku — to je ograničenje Mockoona, prikladno za ovaj zadatak.
+- korisničko ime: `admin`
+- lozinka: `admin123`
 
-## Očekivano ponašanje rješenja
+Frontend (`src/config/env.js`) već sadrži iste dev vjerodajnice pa forma radi bez dodatne konfiguracije u lokalnom razvoju.
 
-- REST sloj usklađen s OpenAPI 3.0.3 (validacija, smisleni HTTP statusi za greške).
-- SOAP klijent usklađen s WSDL-om (ispravna struktura `Envelope`/`Body`, `SOAPAction`, namespace `http://wifi-admin.local/platform/v1`).
-- Rukovanje greškama platforme (SOAP fault, mrežni timeout) i mapiranje u REST odgovore.
-- Rješenje mora biti u **Spring Boot** ili **Ktor** frameworku, napisano u Javi ili Kotlinu.
-- Potiče se korištenje AI alata za generiranje rješenja; provjeravat će se razumljivost.
+## Moguća poboljšanja
 
-## Dodatni zadaci
+- **Config properties umjesto praznih placeholder klasa** — `SyncProperties` i `WifiSyncScheduler` trenutno su prazne klase bez implementacije; logika sinkronizacije zapravo živi u `WifiSyncService` s `@Scheduled` SpEL izrazima. Vezati `wifi.sync.*` property-je na pravi `@ConfigurationProperties` bean radi tipizacije i validacije, te ili implementirati ili ukloniti prazne klase.
+- **Maskiranje osjetljivih podataka u logovima** — `logging.level...MessageTracing=TRACE` loga cijeli SOAP envelope, uključujući WiFi lozinku u čistom tekstu; vrijedilo bi dodati maskiranje/redakciju prije zapisivanja u produkciji.
+- **Lozinka u bazi u čistom tekstu** — `WifiConfigurationEntity.password` sprema se nekriptirano; razmisliti o enkripciji polja (npr. Jasypt ili aplikacijski `AttributeConverter`).
+- **Frontend konfiguracija kroz env varijable** — `config/env.js` trenutno hardkodira `API_BASE_URL` i dev vjerodajnice; prebaciti na `.env` / `REACT_APP_*` varijable radi razdvajanja okruženja i lakšeg deploya.
+- **Jači auth model** — Basic Auth s jednim in-memory korisnikom je u redu za zadatak, ali za produkciju bi imalo smisla OAuth2/JWT te prisilan HTTPS.
+- **Postgres u docker-compose** — trenutno je dockeriziran samo SOAP mock; dodavanjem PostgreSQL servisa u `docker-compose.yml` pokretanje `dev` okruženja bilo bi jednim korakom, bez ručnog postavljanja lokalne baze.
+- **Swagger/OpenAPI UI uživo** — izložiti `springdoc-openapi` na backendu radi interaktivne dokumentacije usklađene s `openapi/openapi.yaml` i lakšeg ručnog testiranja.
+- **Paginacija/listanje CPE-ova** — trenutni API radi samo po pojedinačnom `cpeId`; endpoint za listanje/pretragu svih poznatih uređaja u bazi bio bi koristan za administraciju.
+- **CI pipeline** — dodati GitHub Actions (build + `./gradlew test` + `npm test`) radi automatske provjere PR-ova.
+- **Frontend testovi** — trenutno je prisutan samo generirani `App.test.js`; dodati testove za `WifiForm`, `useWifiConfiguration` i `api/client.js` (mock fetch odgovora, uključujući greške).
 
-- Izrada sloja baze podataka koji će spremati podatke s platforme te dohvat podataka o WiFi mreži vraćati iz baze, a ne s platforme.
-- Izrada schedulera koji će sinkronizirati bazu i podatke s platforme u noćnim satima (konfigurabilno vrijeme i broj CPE-ova).
-- Uspostavljanje mehanizama za logiranje, sigurnost i konfiguracijske profile.
-- Izrada front-end projekta u Reactu koji poziva REST API.
+## Korišteni alati
 
-## Kriteriji ocjene (smjernice)
-
-- Ispravnost kontrakta (REST + SOAP) i čitljivost koda.
-- Validacija poslovnih pravila (npr. lozinka vs. tip šifriranja) na REST sloju.
-- Struktura projekta, testovi, dokumentacija pokretanja.
-
-## Datoteke u repozitoriju
-
-| Datoteka | Opis |
-|----------|------|
-| [openapi/openapi.yaml](openapi/openapi.yaml) | OpenAPI **3.0.3** za REST API |
-| [wsdl/wifi-platform.wsdl](wsdl/wifi-platform.wsdl) | WSDL platforme (SOAP 1.1, document/literal) |
-| [mockoon/platform-mock.json](mockoon/platform-mock.json) | Mockoon okruženje (generirano skriptom) |
-| [docker-compose.yml](docker-compose.yml) | Mockoon CLI kontejner |
+- OS: Linux (Fedora 44)
+- IDE: IntelliJ IDEA (backend), WebStorm (frontend)
+- AI alati: Perplexity (istraživanje/provjera), Claude (generiranje i revizija dijelova rješenja)
