@@ -6,6 +6,13 @@ import local.wifi_admin.platform.v1.WifiBandType;
 
 import java.time.LocalDateTime;
 
+
+/**
+ * Persistence entity representing a Wi-Fi configuration stored in the database.
+ * Each record is associated with a single CPE identifier and contains the
+ * Wi-Fi settings most recently retrieved from or synchronized with the
+ * external SOAP platform.
+ */
 @Entity
 @Table(name = "wifi_configuration")
 public class WifiConfigurationEntity {
