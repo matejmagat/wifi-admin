@@ -8,6 +8,7 @@ import local.wifi_admin.platform.v1.EncryptionType;
 import local.wifi_admin.platform.v1.WifiBandType;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.http.MediaType;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
@@ -46,8 +47,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * match the real behaviour. If you want the openapi.yaml values instead,
  * register {@code JakartaXmlBindAnnotationModule} on the ObjectMapper (or add
  * {@code @JsonProperty}) and update these expectations accordingly.</p>
+ *
+ * <p>NOTE on security: {@code SecurityConfig}'s {@code SecurityFilterChain} bean
+ * lives outside the {@code @WebMvcTest} slice (it isn't a controller/advice/filter
+ * bean and isn't {@code @Import}ed here), so Spring Boot falls back to its default
+ * security auto-configuration, which requires HTTP Basic auth on every path.
+ * {@code addFilters = false} disables the security filter for this slice so the
+ * tests can focus on MVC behaviour, matching this class's stated intent.</p>
  */
 @WebMvcTest(WifiController.class)
+@AutoConfigureMockMvc(addFilters = false)
 class WifiControllerTest {
 
     @Autowired
