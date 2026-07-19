@@ -2,7 +2,7 @@ import { useState } from 'react';
 import {
     getWifiConfiguration,
     updateWifiConfiguration,
-} from './api/wifiApi';
+} from '../api/wifiApi';
 
 export function useWifiConfiguration() {
     const [data, setData] = useState(null);
@@ -12,6 +12,7 @@ export function useWifiConfiguration() {
     async function fetchConfig(cpeId) {
         setLoading(true);
         setError(null);
+
         try {
             const result = await getWifiConfiguration(cpeId);
             setData(result);
@@ -27,6 +28,7 @@ export function useWifiConfiguration() {
     async function saveConfig(config) {
         setLoading(true);
         setError(null);
+
         try {
             const result = await updateWifiConfiguration(config);
             setData(result);
