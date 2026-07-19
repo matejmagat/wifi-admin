@@ -13,6 +13,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.ActiveProfiles;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
 import org.springframework.ws.soap.SoapBody;
@@ -47,8 +48,13 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
  * without it. (When you run locally with the mock SOAP server up, the app
  * itself will talk to it; these tests intentionally isolate the REST layer.)</p>
  */
+// Security is disabled here (addFilters = false) because these tests drive the
+// controller over MockMvc without authenticating, and SecurityConfig requires an
+// authenticated user for /wifi-parameter/**. Without this, every request below
+// would get a 401 from Spring Security before ever reaching the controller.
 @SpringBootTest
-@AutoConfigureMockMvc
+@AutoConfigureMockMvc(addFilters = false)
+@ActiveProfiles("test")
 class WifiEndpointIntegrationTest {
 
 	@Autowired
