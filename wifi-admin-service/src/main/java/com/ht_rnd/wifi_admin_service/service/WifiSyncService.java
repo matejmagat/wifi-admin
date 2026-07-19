@@ -8,6 +8,7 @@ import local.wifi_admin.platform.v1.GetCpeIdResponse;
 import local.wifi_admin.platform.v1.WifiConfigurationType;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Service;
 import org.springframework.ws.soap.client.SoapFaultClientException;
@@ -15,6 +16,7 @@ import org.springframework.ws.soap.client.SoapFaultClientException;
 import java.util.List;
 
 @Service
+@ConditionalOnProperty(name = "wifi.sync.enabled", havingValue = "true", matchIfMissing = true)
 public class WifiSyncService {
 
     private static final Logger log = LoggerFactory.getLogger(WifiSyncService.class);
