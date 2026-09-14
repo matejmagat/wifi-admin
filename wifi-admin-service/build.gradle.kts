@@ -49,7 +49,8 @@ dependencies {
 	testImplementation("org.springframework.ws:spring-ws-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 	testImplementation("com.h2database:h2")
-	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
+    runtimeOnly("com.h2database:h2")
+    testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 
 	//Security
 	implementation("org.springframework.boot:spring-boot-starter-security")

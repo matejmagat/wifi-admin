@@ -1,0 +1,16 @@
+server.port=8081
+
+spring.datasource.url=${DB_URL}
+spring.datasource.username=${DB_USERNAME}
+spring.datasource.password=${DB_PASSWORD}
+
+logging.level.com.ht_rnd.wifi_admin_service=DEBUG
+logging.level.org.springframework.ws.client.MessageTracing=TRACE
+
+wifi.sync.enabled=true
+wifi.sync.initial-delay-ms=10000
+wifi.sync.fixed-delay-ms=30000
+
+app.security.username=${APP_SECURITY_USERNAME}
+app.security.password=${APP_SECURITY_PASSWORD}
+app.cors.allowed-origins=${APP_ALLOWED_ORIGINS}
