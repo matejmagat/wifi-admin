@@ -181,4 +181,3 @@ Frontend također ne bi trebao sadržavati stvarne vjerodajnice u `src/config/en
 
 - OS: Linux (Fedora 44)
 - IDE: IntelliJ IDEA (backend), WebStorm (frontend)
-- AI alati: Perplexity (istraživanje/provjera), Claude (generiranje i revizija dijelova rješenja)
