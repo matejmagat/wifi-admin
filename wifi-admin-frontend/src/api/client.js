@@ -1,9 +1,8 @@
-import {
-    API_BASE_URL,
-    BASIC_AUTH_PASSWORD,
-    BASIC_AUTH_USERNAME,
-} from '../config/env';
 import { createBasicAuthHeader } from '../utils/auth';
+
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
+const BASIC_AUTH_PASSWORD = process.env.REACT_APP_BASIC_AUTH_PASSWORD;
+const BASIC_AUTH_USERNAME = process.env.REACT_APP_BASIC_AUTH_USERNAME;
 
 const defaultHeaders = {
     Accept: 'application/json',
