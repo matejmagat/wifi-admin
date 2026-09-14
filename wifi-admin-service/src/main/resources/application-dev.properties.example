@@ -5,7 +5,7 @@ spring.datasource.username=${DB_USERNAME}
 spring.datasource.password=${DB_PASSWORD}
 
 logging.level.com.ht_rnd.wifi_admin_service=DEBUG
-logging.level.org.springframework.ws.client.MessageTracing=TRACE
+logging.level.org.springframework.ws.client.MessageTracing=INFO
 
 wifi.sync.enabled=true
 wifi.sync.initial-delay-ms=10000
