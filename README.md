@@ -1,152 +1,124 @@
-# WiFi Admin — rješenje zadatka
+# Wi-Fi Admin
 
-Rješenje zadatka za prijavu na posao: REST API (Spring Boot) koji služi kao wrapper oko postojećeg SOAP servisa za dohvat i izmjenu WiFi parametara na HT routeru (CPE uređaju), uz React frontend i podršku bazu podataka. Izvorni opis zadatka nalazi se u [TASK.md](TASK.md) (bivši `README.md`).
+A full-stack application for managing Wi-Fi access points through a clean web interface and a Spring Boot backend. The project integrates a React frontend with an external SOAP service and exposes the integration through a RESTful API.
 
-## Sadržaj
+It was built as a practical backend-development exercise, with emphasis on service integration, API design, validation, authentication, error handling, testing, and containerised local development.
 
-- [Riješeni zadaci](#riješeni-zadaci)
-- [Arhitektura i struktura projekta](#arhitektura-i-struktura-projekta)
-- [Preduvjeti](#preduvjeti)
-- [Pokretanje SOAP mock platforme](#pokretanje-soap-mock-platforme)
-- [Pokretanje Spring Boot backenda](#pokretanje-spring-boot-backenda)
-- [Pokretanje Spring testova](#pokretanje-spring-testova)
-- [Pokretanje React frontenda](#pokretanje-react-frontenda)
-- [Autentikacija](#autentikacija)
-- [Moguća poboljšanja](#moguća-poboljšanja)
-- [Korišteni alati](#korišteni-alati)
+## Highlights
 
-## Riješeni zadaci
+- Full-stack architecture: React frontend and Java/Spring Boot backend
+- REST API for Wi-Fi access-point management
+- SOAP client integration with an external Wi-Fi administration service
+- Basic HTTP authentication for protected API endpoints
+- PostgreSQL persistence with Flyway database migrations
+- Input validation and structured error responses
+- OpenAPI/Swagger documentation
+- Automated tests with JUnit and Mockito
+- Docker Compose setup for local infrastructure
+- Mockoon mock server to support development without the external SOAP service
 
-**Osnovni zadatak:**
+## What the application does
 
-- REST API prema [openapi/openapi.yaml](openapi/openapi.yaml) izložen kroz `WifiController`: `GET /wifi-parameter/{cpeId}` i `PUT /wifi-parameter`.
-- SOAP klijent (`SoapClient`, Spring-WS + JAXB, klase generirane iz WSDL-a preko `wsdl2java` Gradle plugina) koji poziva operacije `getCpeID` i `updateCpeId` prema [wsdl/wifi-platform.wsdl](wsdl/wifi-platform.wsdl).
-- Dvosmjerno mapiranje REST ⇄ SOAP ⇄ entitet baze kroz `WifiConfigurationMapper`.
-- Validacija poslovnog pravila: šifrirane mreže moraju imati lozinku, OPEN mreže je ne smiju imati (`WifiService.validateWifiConfiguration`).
-- Rukovanje greškama: SOAP fault i komunikacijske greške mapirane su u smislene HTTP statuse (404, 400, 502) preko `GlobalExceptionHandler`.
-- Normalizacija SOAP envelopea i detekcija faulta u odgovoru kroz `SoapClientInterceptor`.
+The application provides a browser-based interface for viewing and administering Wi-Fi access points. The frontend calls the backend REST API; the backend validates requests, applies application logic, and communicates with the external SOAP service responsible for Wi-Fi operations.
 
-**Dodatni zadaci (svi implementirani):**
-
-- **Baza podataka** — `WifiConfigurationEntity` + `WifiConfigurationRepository` (Spring Data JPA, PostgreSQL za dev/prod, H2 za testove). `GET` prvo čita iz baze, a tek ako zapis ne postoji ide na SOAP i sprema rezultat; `PUT` uvijek ide na SOAP i zatim ažurira bazu.
-- **Scheduler za noćnu sinkronizaciju** — `WifiSyncService.syncAllKnownWifiConfigurations()`, konfigurabilan preko `wifi.sync.*` property-ja (uključeno/isključeno, initial delay, fixed delay), prolazi kroz sve poznate CPE-ove iz baze i osvježava ih sa SOAP platforme.
-- **Logiranje** — konfigurirano u `application.properties` (log u konzolu i datoteku, po profilu različita razina; SOAP message tracing).
-- **Sigurnost** — HTTP Basic Auth preko `SecurityConfig` (Spring Security), `/wifi-parameter/**` zahtijeva prijavu, `/actuator/health` i `/actuator/info` su javni, ostali actuator endpointi traže rolu `ADMIN`.
-- **Konfiguracijski profili** — `dev`, `test`, `prod` (`application-*.properties`), različiti izvori baze, razine logiranja i sigurnosnih parametara po profilu.
-- **React frontend** — forma za dohvat i izmjenu WiFi parametara po `cpeId`, poziva REST API (`wifi-admin-frontend`).
-
-## Arhitektura i struktura projekta
+The project demonstrates a common enterprise integration pattern:
 
 ```text
-Frontend (React, :3000)
-        │  REST + Basic Auth
-        ▼
-Backend (Spring Boot, :8081)
-        │  SOAP 1.1 + SOAPAction
-        ▼
-Mock platforme (Mockoon u Dockeru, :8080)
-        │
-        ▼
-PostgreSQL (:5432) ← baza s posljednjim poznatim stanjem CPE-ova
+React frontend
+      │ HTTP/JSON
+      ▼
+Spring Boot REST API
+      │ SOAP/XML
+      ▼
+External Wi-Fi administration service
 ```
+
+PostgreSQL stores application data, while Flyway keeps database schema changes versioned and repeatable.
+
+## Technology stack
+
+| Area | Technologies |
+| --- | --- |
+| Backend | Java, Spring Boot, Gradle |
+| API | REST, JSON, OpenAPI / Swagger |
+| External integration | SOAP, WSDL-generated client code |
+| Frontend | React, JavaScript |
+| Database | PostgreSQL, Flyway |
+| Security | HTTP Basic Authentication |
+| Testing | JUnit, Mockito |
+| Local development | Docker, Docker Compose, Mockoon |
+
+## Repository structure
 
 ```text
-wifi-admin-main/
-├── openapi/openapi.yaml           REST kontrakt
-├── wsdl/wifi-platform.wsdl        SOAP kontrakt platforme
-├── mockoon/platform-mock.json     Mock SOAP platforme
-├── docker-compose.yml             Pokretanje mocka
-├── wifi-admin-service/            Spring Boot backend
-│   └── src/main/java/.../
-│       ├── controller/            WifiController (REST)
-│       ├── service/                WifiService, WifiSyncService
-│       ├── client/                 SoapClient, SoapClientInterceptor
-│       ├── mapper/                 WifiConfigurationMapper
-│       ├── model/                  WifiConfiguration (REST DTO)
-│       ├── entity/                 WifiConfigurationEntity (JPA)
-│       ├── repository/             WifiConfigurationRepository
-│       ├── config/                 SoapConfig, SecurityConfig, SchedulerConfig
-│       └── exception/               GlobalExceptionHandler
-└── wifi-admin-frontend/            React frontend
-    └── src/
-        ├── api/                     client.js, wifiApi.js
-        ├── components/               WifiForm, WifiLookup, ErrorMessage
-        ├── hooks/                     useWifiConfiguration, useWifiMetadata
-        └── config/env.js             API URL i auth (dev postavke)
+.
+├── wifi-admin-service/      # Spring Boot backend
+├── wifi-admin-frontend/     # React single-page application
+├── wsdl/                    # SOAP service definitions
+├── openapi/                 # API specification and related resources
+├── mockoon/                 # Mock API environment for local development
+├── docker-compose.yml       # Local PostgreSQL/infrastructure configuration
+├── TASK.md                  # Original project requirements
+└── README.md
 ```
 
-## Preduvjeti
+## Backend capabilities
 
-- Java 21 (JDK)
-- Node.js 18+ i npm (za frontend)
-- Docker i Docker Compose (za SOAP mock)
-- PostgreSQL (lokalno instaliran ili u kontejneru) — potreban za `dev` profil backend
+The Spring Boot service is responsible for:
 
-## Pokretanje SOAP mock platforme
+- Exposing REST endpoints consumed by the frontend
+- Managing Wi-Fi access-point-related operations
+- Integrating with a SOAP-based external system
+- Converting between REST/JSON and SOAP/XML data models
+- Validating incoming requests before processing them
+- Protecting endpoints with HTTP Basic Authentication
+- Persisting relevant application data in PostgreSQL
+- Applying schema migrations through Flyway
+- Returning consistent error responses for invalid requests and integration failures
+- Publishing interactive API documentation through Swagger/OpenAPI
+
+## Getting started
+
+### Prerequisites
+
+Install the following tools before running the project:
+
+- Java Development Kit compatible with the backend configuration
+- Node.js and npm
+- Docker and Docker Compose
+- Git
+
+### 1. Clone the repository
+
+```bash
+git clone https://github.com/matejmagat/wifi-admin.git
+cd wifi-admin
+```
+
+### 2. Start local infrastructure
+
+Use Docker Compose to start the PostgreSQL database and any configured local services:
 
 ```bash
 docker compose up -d
 ```
 
-Mock je dostupan na `http://localhost:8080/platform`. Zaustavljanje:
-
-```bash
-docker compose down
-```
-
-Detalji o mocku (seed podaci, SOAP primjeri, kompatibilnost sa SOAP UI) opisani su u izvornom [TASK.md](TASK.md).
-
-## Pokretanje Spring Boot backenda
-
-1. Kreirati PostgreSQL bazu i korisnika za lokalni `dev` profil. Konkretne vjerodajnice postavite samo u vlastitom, necommitiranom `application-dev.properties` ili kroz varijable okruženja:
-
-   ```sql
-   CREATE DATABASE wifi_admin_db;
-   CREATE USER <local_db_user> WITH PASSWORD '<local_db_password>';
-   GRANT ALL PRIVILEGES ON DATABASE wifi_admin_db TO <local_db_user>;
-   ```
-
-2. Kreirati lokalnu konfiguraciju iz predloška:
-
-   ```bash
-   cp wifi-admin-service/src/main/resources/application-dev.properties.example \
-      wifi-admin-service/src/main/resources/application-dev.properties
-   ```
-
-   Datoteka `application-dev.properties` mora ostati lokalna i ignorirana u Gitu. U njoj postavite vlastite vrijednosti za `DB_USERNAME`, `DB_PASSWORD`, `APP_SECURITY_USERNAME` i `APP_SECURITY_PASSWORD` ili ih osigurajte kroz varijable okruženja.
-
-3. Pokrenuti SOAP mock (vidi gore) — backend na startu i pri svakom dohvatu/izmjeni komunicira s njim na `http://localhost:8080/platform`.
-
-4. Pokrenuti backend iz `wifi-admin-service/`:
-
-   ```bash
-   ./gradlew bootRun
-   ```
-
-   Aktivan je `dev` profil po defaultu (`spring.profiles.active=dev` u `application.properties`). Backend sluša na `http://localhost:8081`.
-
-   Za pokretanje s drugim profilom (npr. `prod`, uz odgovarajuće env varijable `DB_URL`, `DB_USERNAME`, `DB_PASSWORD`, `APP_SECURITY_USERNAME`, `APP_SECURITY_PASSWORD`):
-
-   ```bash
-   ./gradlew bootRun --args='--spring.profiles.active=prod'
-   ```
-
-U IntelliJ IDEA-i dovoljno je otvoriti `wifi-admin-service` kao Gradle projekt i pokrenuti `WifiAdminServiceApplication` (uz Active profile `dev` u Run Configuration ako se ne koristi Gradle task).
-
-## Pokretanje Spring testova
-
-Testovi (`WifiServiceTest`, `WifiControllerTest`, `WifiSyncServiceTest`, `WifiPersistenceIntegrationTest`, `WifiAdminServiceApplicationTests`) koriste `test` profil s H2 in-memory bazom, pa ne zahtijevaju pokrenutu vanjsku bazu ni SOAP mock.
+### 3. Run the backend
 
 ```bash
 cd wifi-admin-service
-./gradlew test
+./gradlew bootRun
 ```
 
-Izvještaj o testovima nakon izvođenja: `wifi-admin-service/build/reports/tests/test/index.html`.
+On Windows:
 
-U IntelliJ IDEA-i: desni klik na `src/test/java` → *Run All Tests*, ili pokretanje pojedinačne test klase.
+```bat
+gradlew.bat bootRun
+```
 
-## Pokretanje React frontenda
+### 4. Run the frontend
+
+Open a second terminal:
 
 ```bash
 cd wifi-admin-frontend
@@ -154,30 +126,50 @@ npm install
 npm start
 ```
 
-Frontend se pokreće na `http://localhost:3000` i poziva backend na `http://localhost:8081` (vidi `src/config/env.js`). Backend mora biti pokrenut prije korištenja frontenda; CORS je na backendu dopušten upravo za `http://localhost:3000` (`@CrossOrigin` u `WifiController`).
+The frontend then communicates with the locally running backend. Check the frontend configuration and backend application configuration for the exact local ports, credentials, and service URLs used by your environment.
 
-## Autentikacija
+## API documentation
 
-Backend zahtijeva HTTP Basic Auth za sve `/wifi-parameter/**` pozive.
+When the backend is running, Swagger/OpenAPI documentation is available through the Spring Boot service. Use it to inspect the available endpoints, request models, response formats, and authentication requirements.
 
-Vjerodajnice se ne spremaju u repozitorij. Za lokalni razvoj definirajte `APP_SECURITY_USERNAME` i `APP_SECURITY_PASSWORD` u vlastitom `application-dev.properties`, kroz IDE Run Configuration ili kao varijable okruženja.
+The `openapi/` directory contains API-related resources, while the backend source defines the application behaviour.
 
-Frontend također ne bi trebao sadržavati stvarne vjerodajnice u `src/config/env.js`. Za razvoj ih učitajte iz lokalne, ignorirane `.env` datoteke, a za produkciju koristite prikladan autentikacijski model i sigurno upravljanje tajnama.
+## Testing
 
-## Moguća poboljšanja
+Run the backend test suite with:
 
-- **Config properties umjesto praznih placeholder klasa** — `SyncProperties` i `WifiSyncScheduler` trenutno su prazne klase bez implementacije; logika sinkronizacije zapravo živi u `WifiSyncService` s `@Scheduled` SpEL izrazima. Vezati `wifi.sync.*` property-je na pravi `@ConfigurationProperties` bean radi tipizacije i validacije, te ili implementirati ili ukloniti prazne klase.
-- **Maskiranje osjetljivih podataka u logovima** — `logging.level...MessageTracing=TRACE` loga cijeli SOAP envelope, uključujući WiFi lozinku u čistom tekstu; vrijedilo bi dodati maskiranje/redakciju prije zapisivanja u produkciji.
-- **Lozinka u bazi u čistom tekstu** — `WifiConfigurationEntity.password` sprema se nekriptirano; razmisliti o enkripciji polja (npr. Jasypt ili aplikacijski `AttributeConverter`).
-- **Frontend konfiguracija kroz env varijable** — `config/env.js` trenutno hardkodira `API_BASE_URL` i dev vjerodajnice; prebaciti na `.env` / `REACT_APP_*` varijable radi razdvajanja okruženja i lakšeg deploya.
-- **Jači auth model** — Basic Auth s jednim in-memory korisnikom je u redu za zadatak, ali za produkciju bi imalo smisla OAuth2/JWT te prisilan HTTPS.
-- **Postgres u docker-compose** — trenutno je dockeriziran samo SOAP mock; dodavanjem PostgreSQL servisa u `docker-compose.yml` pokretanje `dev` okruženja bilo bi jednim korakom, bez ručnog postavljanja lokalne baze.
-- **Swagger/OpenAPI UI uživo** — izložiti `springdoc-openapi` na backendu radi interaktivne dokumentacije usklađene s `openapi/openapi.yaml` i lakšeg ručnog testiranja.
-- **Paginacija/listanje CPE-ova** — trenutni API radi samo po pojedinačnom `cpeId`; endpoint za listanje/pretragu svih poznatih uređaja u bazi bio bi koristan za administraciju.
-- **CI pipeline** — dodati GitHub Actions (build + `./gradlew test` + `npm test`) radi automatske provjere PR-ova.
-- **Frontend testovi** — trenutno je prisutan samo generirani `App.test.js`; dodati testove za `WifiForm`, `useWifiConfiguration` i `api/client.js` (mock fetch odgovora, uključujući greške).
+```bash
+cd wifi-admin-service
+./gradlew test
+```
 
-## Korišteni alati
+The tests cover application logic in isolation using JUnit and Mockito, helping verify expected behaviour without relying on a live external system.
 
-- OS: Linux (Fedora 44)
-- IDE: IntelliJ IDEA (backend), WebStorm (frontend)
+## Local SOAP integration
+
+The application uses a SOAP service contract stored in `wsdl/`. For local development and predictable testing, the `mockoon/` directory provides a mock environment that can stand in for the external dependency.
+
+This approach makes it possible to develop and test the REST layer independently while retaining the structure of a real-world legacy or enterprise SOAP integration.
+
+## Engineering focus
+
+This project was designed to practise production-relevant backend skills rather than only building a UI:
+
+- Designing clear REST interfaces around an existing SOAP dependency
+- Working with WSDL contracts and generated client code
+- Separating controller, service, integration, and persistence responsibilities
+- Handling validation, errors, and authentication consistently
+- Managing relational schema changes with Flyway
+- Testing service-layer behaviour with mocks
+- Reproducing a local environment with Docker Compose
+
+## Author
+
+**Matej Magat**
+
+- GitHub: [@matejmagat](https://github.com/matejmagat)
+- LinkedIn: [matej-magat](https://www.linkedin.com/in/matej-magat/)
+
+## License
+
+This repository is intended as a portfolio and learning project. Please contact the author before reusing substantial parts of the implementation.
