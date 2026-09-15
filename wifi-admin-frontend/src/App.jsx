@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import './App.css';
 import ErrorMessage from './components/ErrorMessage';
 import WifiForm from './components/WifiForm';
 import WifiLookup from './components/WifiLookup';
@@ -15,6 +16,7 @@ const emptyForm = {
 
 export default function App() {
   const { data, error, loading, fetchConfig, saveConfig } = useWifiConfiguration();
+
   const {
     encryptionTypes,
     wifiBandTypes,
@@ -38,6 +40,7 @@ export default function App() {
   async function handleFetch() {
     try {
       const result = await fetchConfig(cpeId);
+
       setForm({
         cpeId: result.cpeId ?? '',
         encryptionType: result.encryptionType ?? '',
@@ -46,11 +49,12 @@ export default function App() {
         wifiBandType: result.wifiBandType ?? '',
       });
     } catch (_) {
+      // The hook exposes the request error through `error`.
     }
   }
 
-  async function handleSave(e) {
-    e.preventDefault();
+  async function handleSave(event) {
+    event.preventDefault();
 
     if (form.encryptionType !== 'OPEN' && !form.password.trim()) {
       alert('Password is required for secured encryption types.');
@@ -62,8 +66,10 @@ export default function App() {
         ...form,
         password: form.encryptionType === 'OPEN' ? '' : form.password,
       });
+
       alert('Saved successfully');
     } catch (_) {
+      // The hook exposes the request error through `error`.
     }
   }
 
@@ -80,35 +86,75 @@ export default function App() {
   }
 
   return (
-      <div style={{ padding: 24, maxWidth: 520 }}>
-        <h1>Wi-Fi Admin</h1>
+      <div className="app">
+        <main className="app-shell">
+          <header className="page-header">
 
-        <WifiLookup
-            cpeId={cpeId}
-            onChange={setCpeId}
-            onFetch={handleFetch}
-            disabled={loading || metaLoading}
-            loading={loading}
-        />
 
-        <ErrorMessage error={metaError} />
-        <ErrorMessage error={error} />
+            <div>
+              <p className="eyebrow">Network management</p>
+              <h1>Wi‑Fi Admin</h1>
+              <p className="page-subtitle">
+                Retrieve and update wireless configuration for a CPE device.
+              </p>
+            </div>
+          </header>
 
-        <WifiForm
-            form={form}
-            onFieldChange={updateField}
-            onSubmit={handleSave}
-            loading={loading}
-            metaLoading={metaLoading}
-            encryptionTypes={encryptionTypes}
-            wifiBandTypes={wifiBandTypes}
-        />
+          <section className="dashboard-grid">
+            <aside className="lookup-panel">
+              <div className="panel-heading">
+                <span className="panel-number">01</span>
+                <div>
+                  <h2>Find device</h2>
+                  <p>Load the current configuration by CPE ID.</p>
+                </div>
+              </div>
 
-        {data && (
-            <pre style={{ marginTop: 24 }}>
-          {JSON.stringify(data, null, 2)}
-        </pre>
-        )}
+              <WifiLookup
+                  cpeId={cpeId}
+                  onChange={setCpeId}
+                  onFetch={handleFetch}
+                  disabled={loading || metaLoading}
+                  loading={loading}
+              />
+
+              <div className="connection-status">
+                <span className={`status-dot ${loading ? 'status-dot--loading' : ''}`} />
+                <span>{loading ? 'Contacting configuration service…' : 'Ready to fetch configuration'}</span>
+              </div>
+            </aside>
+
+            <section className="config-panel">
+              <div className="panel-heading">
+                <span className="panel-number">02</span>
+                <div>
+                  <h2>Wireless configuration</h2>
+                  <p>Review the loaded values and save your changes.</p>
+                </div>
+              </div>
+
+              <ErrorMessage error={metaError} />
+              <ErrorMessage error={error} />
+
+              <WifiForm
+                  form={form}
+                  onFieldChange={updateField}
+                  onSubmit={handleSave}
+                  loading={loading}
+                  metaLoading={metaLoading}
+                  encryptionTypes={encryptionTypes}
+                  wifiBandTypes={wifiBandTypes}
+              />
+            </section>
+          </section>
+
+          {data && (
+              <details className="response-debug">
+                <summary>Latest API response</summary>
+                <pre>{JSON.stringify(data, null, 2)}</pre>
+              </details>
+          )}
+        </main>
       </div>
   );
 }
