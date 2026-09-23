@@ -1,7 +1,28 @@
 services:
-  platform-mock:
+  postgres:
+    image: postgres:16-alpine
+    container_name: wifi-admin-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${ADMIN_USER:?Set ADMIN_USER in .env}
+      POSTGRES_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - 5433:5432
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+    networks:
+      - wifi-admin
+
+  mockoon:
     image: mockoon/cli:9.2.0
-    container_name: platform-mock
+    container_name: wifi-admin-mock
+    restart: unless-stopped
     command:
       - --data
       - /data/platform-mock.json
@@ -12,4 +33,55 @@ services:
     volumes:
       - ./mockoon/platform-mock.json:/data/platform-mock.json:ro,z
     ports:
-      - "8080:3000"
+      - "3000:3000"
+    networks:
+      - wifi-admin
+
+  backend:
+    profiles: ["prod"]
+    build:
+      context: .
+      dockerfile: wifi-admin-service/Dockerfile
+    container_name: wifi-admin-backend
+    restart: unless-stopped
+    environment:
+      SPRING_PROFILES_ACTIVE: prod
+
+      DB_URL: jdbc:postgresql://postgres:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      DB_USERNAME: ${ADMIN_USER:?Set ADMIN_USER in .env}
+      DB_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+
+      APP_SECURITY_USERNAME: ${ADMIN_USER:?Set ADMIN_USER in .env}
+      APP_SECURITY_PASSWORD: ${ADMIN_PASSWORD:?Set ADMIN_PASSWORD in .env}
+      APP_ALLOWED_ORIGINS: http://localhost:${APP_PORT:?Set APP_PORT in .env}
+
+      SPRING_JPA_HIBERNATE_DDL_AUTO: update
+      SOAP_ENDPOINT: http://mockoon:3000/platform
+    depends_on:
+      postgres:
+        condition: service_healthy
+    expose:
+      - "8080"
+    networks:
+      - wifi-admin
+
+  frontend:
+    profiles: ["prod"]
+    build:
+      context: ./wifi-admin-frontend
+      dockerfile: Dockerfile
+    container_name: wifi-admin-frontend
+    restart: unless-stopped
+    depends_on:
+      - backend
+    ports:
+      - "${APP_PORT:?Set APP_PORT in .env}:80"
+    networks:
+      - wifi-admin
+
+volumes:
+  postgres_data:
+
+networks:
+  wifi-admin:
+    driver: bridge

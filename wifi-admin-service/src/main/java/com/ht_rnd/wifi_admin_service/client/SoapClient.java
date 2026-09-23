@@ -2,6 +2,7 @@ package com.ht_rnd.wifi_admin_service.client;
 
 import com.ht_rnd.wifi_admin_service.model.WifiConfiguration;
 import local.wifi_admin.platform.v1.*;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.stereotype.Component;
 import org.springframework.ws.client.core.support.WebServiceGatewaySupport;
 import org.springframework.ws.soap.client.core.SoapActionCallback;
@@ -9,7 +10,8 @@ import org.springframework.ws.soap.client.core.SoapActionCallback;
 @Component
 public class SoapClient extends WebServiceGatewaySupport {
 
-    private static final String SOAP_ENDPOINT = "http://localhost:8080/platform";
+    @Value("${soap.endpoint}")
+    private String SOAP_ENDPOINT;
     private static final String GET_ACTION    = "http://wifi-admin.local/platform/v1#getCpeID";
     private static final String UPDATE_ACTION = "http://wifi-admin.local/platform/v1#updateCpeId";
 

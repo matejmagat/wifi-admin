@@ -1,10 +1,12 @@
 import { useEffect, useState } from 'react';
 import './App.css';
 import ErrorMessage from './components/ErrorMessage';
+import LoginForm from './components/LoginForm';
 import WifiForm from './components/WifiForm';
 import WifiLookup from './components/WifiLookup';
 import { useWifiConfiguration } from './hooks/useWifiConfiguration';
 import { useWifiMetadata } from './hooks/useWifiMetadata';
+import { getStoredCredentials } from './utils/auth';
 
 const emptyForm = {
   cpeId: '',
@@ -15,6 +17,10 @@ const emptyForm = {
 };
 
 export default function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(
+      () => getStoredCredentials() !== null
+  );
+
   const { data, error, loading, fetchConfig, saveConfig } = useWifiConfiguration();
 
   const {
@@ -85,15 +91,19 @@ export default function App() {
     });
   }
 
+  if (!isAuthenticated) {
+    return (
+        <LoginForm onAuthenticated={() => setIsAuthenticated(true)} />
+    );
+  }
+
   return (
       <div className="app">
         <main className="app-shell">
           <header className="page-header">
-
-
             <div>
               <p className="eyebrow">Network management</p>
-              <h1>Wi‑Fi Admin</h1>
+              <h1>Wi-Fi Admin</h1>
               <p className="page-subtitle">
                 Retrieve and update wireless configuration for a CPE device.
               </p>
@@ -119,8 +129,16 @@ export default function App() {
               />
 
               <div className="connection-status">
-                <span className={`status-dot ${loading ? 'status-dot--loading' : ''}`} />
-                <span>{loading ? 'Contacting configuration service…' : 'Ready to fetch configuration'}</span>
+              <span
+                  className={`status-dot ${
+                      loading ? 'status-dot--loading' : ''
+                  }`}
+              />
+                <span>
+                {loading
+                    ? 'Contacting configuration service…'
+                    : 'Ready to fetch configuration'}
+              </span>
               </div>
             </aside>
 

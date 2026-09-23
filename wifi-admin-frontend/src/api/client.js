@@ -1,16 +1,9 @@
-import { createBasicAuthHeader } from '../utils/auth';
+import {
+    createBasicAuthHeader,
+    getStoredCredentials,
+} from '../utils/auth';
 
-const API_BASE_URL = process.env.REACT_APP_API_BASE_URL;
-const BASIC_AUTH_PASSWORD = process.env.REACT_APP_BASIC_AUTH_PASSWORD;
-const BASIC_AUTH_USERNAME = process.env.REACT_APP_BASIC_AUTH_USERNAME;
-
-const defaultHeaders = {
-    Accept: 'application/json',
-    Authorization: createBasicAuthHeader(
-        BASIC_AUTH_USERNAME,
-        BASIC_AUTH_PASSWORD
-    ),
-};
+const API_BASE_URL = process.env.REACT_APP_API_BASE_URL ?? '/api';
 
 async function parseResponse(response) {
     const contentType = response.headers.get('content-type') || '';
@@ -37,11 +30,27 @@ async function parseResponse(response) {
 }
 
 export async function apiFetch(path, options = {}) {
+    // Read the latest credentials for every request.
+    // This means credentials saved by the login form are used immediately.
+    const credentials = getStoredCredentials();
+
+    const authorizationHeader = credentials
+        ? {
+            Authorization: createBasicAuthHeader(
+                credentials.username,
+                credentials.password
+            ),
+        }
+        : {};
+
     const response = await fetch(`${API_BASE_URL}${path}`, {
         ...options,
         headers: {
-            ...defaultHeaders,
-            ...(options.body ? { 'Content-Type': 'application/json' } : {}),
+            Accept: 'application/json',
+            ...authorizationHeader,
+            ...(options.body
+                ? { 'Content-Type': 'application/json' }
+                : {}),
             ...(options.headers || {}),
         },
     });
