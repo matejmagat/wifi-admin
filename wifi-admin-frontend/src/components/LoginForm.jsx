@@ -70,7 +70,7 @@ export default function LoginForm({ onAuthenticated }) {
                     </label>
 
                     <button className="login-form__submit" type="submit">
-                        Continue
+                        Log in
                     </button>
                 </form>
             </section>

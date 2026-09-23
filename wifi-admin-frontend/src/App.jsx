@@ -6,7 +6,10 @@ import WifiForm from './components/WifiForm';
 import WifiLookup from './components/WifiLookup';
 import { useWifiConfiguration } from './hooks/useWifiConfiguration';
 import { useWifiMetadata } from './hooks/useWifiMetadata';
-import { getStoredCredentials } from './utils/auth';
+import {
+  clearCredentials,
+  getStoredCredentials,
+} from './utils/auth';
 
 const emptyForm = {
   cpeId: '',
@@ -21,7 +24,23 @@ export default function App() {
       () => getStoredCredentials() !== null
   );
 
-  const { data, error, loading, fetchConfig, saveConfig } = useWifiConfiguration();
+  function handleLogout() {
+    clearCredentials();
+    setIsAuthenticated(false);
+  }
+
+  if (!isAuthenticated) {
+    return (
+        <LoginForm onAuthenticated={() => setIsAuthenticated(true)} />
+    );
+  }
+
+  return <Dashboard onLogout={handleLogout} />;
+}
+
+function Dashboard({ onLogout }) {
+  const { data, error, loading, fetchConfig, saveConfig } =
+      useWifiConfiguration();
 
   const {
     encryptionTypes,
@@ -38,8 +57,10 @@ export default function App() {
 
     setForm((prev) => ({
       ...prev,
-      encryptionType: prev.encryptionType || encryptionTypes[0] || '',
-      wifiBandType: prev.wifiBandType || wifiBandTypes[0] || '',
+      encryptionType:
+          prev.encryptionType || encryptionTypes[0] || '',
+      wifiBandType:
+          prev.wifiBandType || wifiBandTypes[0] || '',
     }));
   }, [metaLoading, encryptionTypes, wifiBandTypes]);
 
@@ -62,7 +83,10 @@ export default function App() {
   async function handleSave(event) {
     event.preventDefault();
 
-    if (form.encryptionType !== 'OPEN' && !form.password.trim()) {
+    if (
+        form.encryptionType !== 'OPEN' &&
+        !form.password.trim()
+    ) {
       alert('Password is required for secured encryption types.');
       return;
     }
@@ -70,7 +94,8 @@ export default function App() {
     try {
       await saveConfig({
         ...form,
-        password: form.encryptionType === 'OPEN' ? '' : form.password,
+        password:
+            form.encryptionType === 'OPEN' ? '' : form.password,
       });
 
       alert('Saved successfully');
@@ -91,12 +116,6 @@ export default function App() {
     });
   }
 
-  if (!isAuthenticated) {
-    return (
-        <LoginForm onAuthenticated={() => setIsAuthenticated(true)} />
-    );
-  }
-
   return (
       <div className="app">
         <main className="app-shell">
@@ -105,9 +124,18 @@ export default function App() {
               <p className="eyebrow">Network management</p>
               <h1>Wi-Fi Admin</h1>
               <p className="page-subtitle">
-                Retrieve and update wireless configuration for a CPE device.
+                Retrieve and update wireless configuration for a CPE
+                device.
               </p>
             </div>
+
+            <button
+                className="button button--secondary auth-button"
+                onClick={onLogout}
+                type="button"
+            >
+              Log out
+            </button>
           </header>
 
           <section className="dashboard-grid">
@@ -147,7 +175,9 @@ export default function App() {
                 <span className="panel-number">02</span>
                 <div>
                   <h2>Wireless configuration</h2>
-                  <p>Review the loaded values and save your changes.</p>
+                  <p>
+                    Review the loaded values and save your changes.
+                  </p>
                 </div>
               </div>
 
