@@ -3,11 +3,13 @@ package com.ht_rnd.wifi_admin_service;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.ht_rnd.wifi_admin_service.client.SoapClient;
 import com.ht_rnd.wifi_admin_service.model.WifiConfiguration;
+import com.ht_rnd.wifi_admin_service.repository.WifiConfigurationRepository;
 import local.wifi_admin.platform.v1.EncryptionType;
 import local.wifi_admin.platform.v1.GetCpeIdResponse;
 import local.wifi_admin.platform.v1.UpdateCpeIdResponse;
 import local.wifi_admin.platform.v1.WifiBandType;
 import local.wifi_admin.platform.v1.WifiConfigurationType;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
@@ -23,6 +25,7 @@ import org.springframework.ws.soap.client.SoapFaultClientException;
 
 import static org.hamcrest.Matchers.nullValue;
 import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.Mockito.reset;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
@@ -52,18 +55,27 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // controller over MockMvc without authenticating, and SecurityConfig requires an
 // authenticated user for /wifi-parameter/**. Without this, every request below
 // would get a 401 from Spring Security before ever reaching the controller.
-@SpringBootTest
+@SpringBootTest(properties = "app.cors.allowed-origins=http://localhost")
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
-class WifiEndpointIntegrationTest {
+class WifiAdminServiceApplicationTests {
 
 	@Autowired
 	private MockMvc mockMvc;
+
+	@Autowired
+	private WifiConfigurationRepository wifiConfigurationRepository;
 
 	private final ObjectMapper objectMapper = new ObjectMapper();
 
 	@MockitoBean
 	private SoapClient soapClient;
+
+	@BeforeEach
+	void setUp() {
+		wifiConfigurationRepository.deleteAll();
+		reset(soapClient);
+	}
 
 	// ------------------------------------------------------------------
 	// helpers
@@ -317,4 +329,3 @@ class WifiEndpointIntegrationTest {
 						.value("SOAP communication error: read timed out"));
 	}
 }
-

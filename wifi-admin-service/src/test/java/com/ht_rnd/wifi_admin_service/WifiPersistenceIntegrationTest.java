@@ -34,7 +34,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 // and SecurityConfig requires an authenticated user for /wifi-parameter/**.
 // Without this, every request below would get a 401 from Spring Security before
 // ever reaching the controller.
-@SpringBootTest
+@SpringBootTest(properties = "app.cors.allowed-origins=http://localhost")
 @AutoConfigureMockMvc(addFilters = false)
 @ActiveProfiles("test")
 class WifiPersistenceIntegrationTest {
