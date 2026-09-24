@@ -34,11 +34,17 @@ jobs:
           filters: |
             backend:
               - 'wifi-admin-service/**'
+              - 'wsdl/**'
               - 'docker-compose.yml'
+              - '.dockerignore'
+              - '.env.example'
               - '.github/workflows/ci.yml'
             frontend:
               - 'wifi-admin-frontend/**'
+              - 'mockoon/**'
               - 'docker-compose.yml'
+              - '.dockerignore'
+              - '.env.example'
               - '.github/workflows/ci.yml'
 
   backend:
@@ -105,3 +111,66 @@ jobs:
 
       - name: Build frontend
         run: npm run build
+  smoke:
+    name: Docker Compose smoke test
+    needs: changes
+    if: |
+      needs.changes.outputs.backend == 'true' ||
+      needs.changes.outputs.frontend == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Create smoke-test environment
+        run: |
+          cat > .env <<'EOF'
+          APP_PORT=8080
+          ADMIN_USER=smoke_admin
+          ADMIN_PASSWORD=smoke_password
+          POSTGRES_DB=wifi_admin_smoke
+          EOF
+
+      - name: Build and start application
+        run: docker compose --profile prod up --build -d
+
+      - name: Wait for application and run smoke checks
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          for attempt in {1..60}; do
+            if curl --fail --silent --show-error \
+              http://localhost:8080/api/actuator/health \
+              | grep -q '"status":"UP"'; then
+              break
+            fi
+
+            if [ "$attempt" -eq 60 ]; then
+              echo "Application did not become healthy in time."
+              exit 1
+            fi
+
+            sleep 2
+          done
+
+          curl --fail --silent --show-error \
+            http://localhost:8080/ \
+            | grep -qi '<div id="root"'
+
+          curl --fail --silent --show-error \
+            --user 'smoke_admin:smoke_password' \
+            http://localhost:8080/api/wifi-parameter/CPE_001 \
+            | grep -q '"cpeId":"CPE_001"'
+
+      - name: Show container status and logs on failure
+        if: failure()
+        run: |
+          docker compose --profile prod ps -a
+          docker compose --profile prod logs --no-color
+
+      - name: Tear down application
+        if: always()
+        run: docker compose --profile prod down --volumes --remove-orphans
